@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Result – PYQ – CAT Math</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    .result-header {
+      text-align: center;
+      padding: 32px 0;
+    }
+    .result-score {
+      font-size: 4rem;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .result-score.good { color: var(--green); }
+    .result-score.ok { color: var(--amber); }
+    .result-score.poor { color: var(--red); }
+    .result-label {
+      font-size: 1.1rem;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+    .result-stats {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      margin: 24px 0;
+    }
+    .result-stat {
+      text-align: center;
+    }
+    .result-stat-val {
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+    .result-stat-label {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .result-level {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-top: 8px;
+    }
+    .level-easy { background: var(--green); color: white; }
+    .level-medium { background: var(--amber); color: black; }
+    .level-hard { background: var(--red); color: white; }
+    .result-actions {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin: 32px 0;
+    }
+    .results-list {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .result-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .result-item.correct {
+      border-left: 3px solid var(--green);
+    }
+    .result-item.wrong {
+      border-left: 3px solid var(--red);
+    }
+    .ri-question {
+      font-size: 0.9rem;
+      margin-bottom: 8px;
+      line-height: 1.5;
+    }
+    .ri-answer {
+      font-size: 0.85rem;
+      display: flex;
+      gap: 12px;
+    }
+    .ri-correct { color: var(--green); }
+    .ri-wrong { color: var(--red); }
+    .ri-hint {
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-top: 4px;
+    }
+    .best-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--amber);
+      color: black;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <a class="nav-logo" href="/">
+    CAT Math
+    <span class="logo-badge">Trainer</span>
+  </a>
+  <div class="nav-chips">
+    <a href="{{ url_for('pyqs') }}" class="nav-chip">📋 PYQs</a>
+    <div class="nav-chip">
+      🔥 <span class="val">{{ r.streak }}</span> streak
+    </div>
+  </div>
+</nav>
+
+<div class="page">
+
+  <div class="result-header">
+    <div class="result-score {% if r.score/r.total*100 >= 70 %}good{% elif r.score/r.total*100 >= 40 %}ok{% else %}poor{% endif %}">
+      {{ r.score }}/{{ r.total }}
+    </div>
+    <div class="result-label">{{ r.topic_name }} PYQ Complete!</div>
+    
+    <div class="result-stats">
+      <div class="result-stat">
+        <div class="result-stat-val">{{ (r.score/r.total*100)|int }}%</div>
+        <div class="result-stat-label">Accuracy</div>
+      </div>
+      <div class="result-stat">
+        <div class="result-stat-val">{{ fmt_time(r.time_seconds) }}</div>
+        <div class="result-stat-label">Time</div>
+      </div>
+      <div class="result-stat">
+        <div class="result-stat-val">{{ r.streak }}</div>
+        <div class="result-stat-label">Streak 🔥</div>
+      </div>
+    </div>
+    
+    <div class="result-level level-{{ r.level }}">{{ r.level | upper }} Level</div>
+    
+    {% if best and best.best_score == r.score and best.best_time_seconds == r.time_seconds %}
+    <div class="best-badge">🏆 New Best Score!</div>
+    {% elif best and best.best_score == r.score %}
+    <div class="best-badge">🏆 Best Score Tied!</div>
+    {% endif %}
+  </div>
+
+  <div class="result-actions">
+    <a href="{{ url_for('pyq_quiz', topic=r.topic) }}" class="btn btn-amber">Try Again</a>
+    <a href="{{ url_for('pyqs') }}" class="btn btn-ghost">Back to PYQs</a>
+    <a href="{{ url_for('home') }}" class="btn btn-ghost">Home</a>
+  </div>
+
+  <div class="results-list">
+    <h3 style="margin-bottom: 16px;">Question Review</h3>
+    {% for item in r.results %}
+    <div class="result-item {% if item.ok %}correct{% else %}wrong{% endif %}">
+      <div class="ri-question">{{ item.q }}</div>
+      <div class="ri-answer">
+        <span class="{% if item.ok %}ri-correct{% else %}ri-wrong{% endif %}">
+          {% if item.ok %}✓ Your answer: {{ item.user_a }}{% else %}✕ Your answer: {{ item.user_a or '(skipped)' }}{% endif %}
+        </span>
+        <span class="ri-correct">Correct: {{ item.correct_a }}</span>
+      </div>
+      {% if item.hint %}
+      <div class="ri-hint">💡 {{ item.hint }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+</div>
+
+</body>
+</html>
