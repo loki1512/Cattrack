@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ lesson.name }} – CAT Math</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="quiz-wrap">
+
+  <!-- Top bar -->
+  <div class="quiz-topbar">
+    <div>
+      <div class="quiz-title">{{ lesson.name }}</div>
+      <div class="quiz-prog-text" id="prog-text">Question 1 of {{ quiz|length }}</div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;">
+      {% if best %}
+      <div style="font-size:0.78rem;color:var(--muted);font-family:'JetBrains Mono',monospace;">
+        Best: <span style="color:var(--amber);">{{ fmt_time(best.best_time_seconds) }}</span>
+      </div>
+      {% endif %}
+      <div class="quiz-timer" id="timer">00:00</div>
+      <a href="{{ url_for('home') }}" class="btn btn-ghost" style="padding:8px 14px;font-size:0.8rem;">✕ Quit</a>
+    </div>
+  </div>
+
+  <!-- Progress bar -->
+  <div class="prog-bar-wrap">
+    <div class="prog-bar-fill" id="prog-bar" style="width:0%"></div>
+  </div>
+
+  <!-- Question card -->
+  <div class="quiz-body">
+    <div class="qcard">
+      <div class="qcard-type" id="qtype">Multiplication</div>
+      <div class="qcard-question" id="qtext">—</div>
+
+      <div class="answer-wrap">
+        <input
+          type="text"
+          id="ans"
+          class="answer-input"
+          autocomplete="off"
+          inputmode="decimal"
+          placeholder="?"
+          autofocus
+        >
+
+        <div class="feedback-bar" id="feedback"></div>
+        <div class="fb-hint" id="fb-hint"></div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-ghost skip-btn" id="skip-btn" onclick="skip()">Skip</button>
+        <button class="btn btn-amber" id="next-btn" onclick="confirmAndNext()" disabled>Next →</button>
+      </div>
+
+      <div style="margin-top:16px;font-size:0.75rem;color:var(--muted);text-align:center;">
+        Press <kbd style="background:var(--surface);padding:1px 6px;border-radius:4px;border:1px solid var(--border2);">Enter</kbd> to submit
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const QUIZ = {{ quiz | tojson }};
+const TOTAL = QUIZ.length;
+let current = 0;
+let answers = [];
+let answered = false;   // has user submitted this question
+let startTime = Date.now();
+let timerInterval;
+let scoreCount = 0;
+
+// ── Timer ───────────────────────────────────────────────────────────────────
+timerInterval = setInterval(() => {
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+  const s = String(elapsed % 60).padStart(2, '0');
+  document.getElementById('timer').textContent = `${m}:${s}`;
+  if (elapsed > 600) document.getElementById('timer').classList.add('hot');
+}, 500);
+
+// ── Type labels ──────────────────────────────────────────────────────────────
+const TYPE_LABELS = {
+  mul: 'Multiplication', sq: 'Squares', cu: 'Cubes',
+  pct: 'Fraction → Percentage', pct_rev: 'Percentage → Fraction',
+  add: 'Addition', sub: 'Subtraction', sqrt: 'Square Root',
+  table: 'Tables', rev_table: 'Reverse Tables', pct_of: 'Percentage of Number'
+};
+
+// ── Render ───────────────────────────────────────────────────────────────────
+function render() {
+  const q = QUIZ[current];
+  document.getElementById('qtype').textContent = TYPE_LABELS[q.type] || 'Math';
+  document.getElementById('qtext').textContent = q.q;
+  document.getElementById('prog-text').textContent = `Question ${current + 1} of ${TOTAL}`;
+  document.getElementById('prog-bar').style.width = `${(current / TOTAL) * 100}%`;
+
+  const inp = document.getElementById('ans');
+  inp.value = '';
+  inp.className = 'answer-input';
+  inp.disabled = false;
+  inp.focus();
+
+  const fb = document.getElementById('feedback');
+  fb.className = 'feedback-bar';
+  fb.textContent = '';
+  document.getElementById('fb-hint').textContent = '';
+
+  document.getElementById('next-btn').disabled = true;
+  document.getElementById('skip-btn').disabled = false;
+  answered = false;
+}
+
+// ── Submit answer ─────────────────────────────────────────────────────────────
+function submitAnswer() {
+  if (answered) {
+    moveNext();
+    return;
+  }
+  const inp = document.getElementById('ans');
+  const userVal = inp.value.trim();
+  if (userVal === '') return;
+
+  answered = true;
+  inp.disabled = true;
+  document.getElementById('skip-btn').disabled = true;
+  document.getElementById('next-btn').disabled = false;
+
+  const q = QUIZ[current];
+  const correct = checkAnswer(userVal, q.a);
+  answers.push({ v: userVal, ok: correct });
+
+  const fb = document.getElementById('feedback');
+  const hint = document.getElementById('fb-hint');
+
+  if (correct) {
+    scoreCount++;
+    inp.classList.add('state-correct');
+    fb.className = 'feedback-bar fb-correct show';
+    fb.textContent = '✓ Correct!';
+    hint.textContent = q.hint || '';
+    flashScore('✓', 'correct');
+  } else {
+    inp.classList.add('state-wrong');
+    fb.className = 'feedback-bar fb-wrong show';
+    fb.textContent = `✗  Answer: ${q.a}`;
+    hint.textContent = q.hint || '';
+    flashScore('✗', 'wrong');
+  }
+
+  // auto-advance after 1.2s
+  setTimeout(() => {
+    if (answered) moveNext();
+  }, 1200);
+}
+
+function checkAnswer(user, correct) {
+  const u = user.trim().toLowerCase().replace(/\s+/g, '');
+  const c = String(correct).trim().toLowerCase().replace(/\s+/g, '');
+  if (u === c) return true;
+  try {
+    return Math.abs(parseFloat(u) - parseFloat(c)) < 0.015;
+  } catch(e) { return false; }
+}
+
+function confirmAndNext() {
+  if (!answered) { submitAnswer(); }
+  else { moveNext(); }
+}
+
+function skip() {
+  if (answered) return;
+  answered = true;
+  answers.push({ v: '', ok: false });
+  const q = QUIZ[current];
+  const fb = document.getElementById('feedback');
+  fb.className = 'feedback-bar fb-wrong show';
+  fb.textContent = `Skipped — Answer: ${q.a}`;
+  document.getElementById('fb-hint').textContent = q.hint || '';
+  document.getElementById('ans').disabled = true;
+  document.getElementById('skip-btn').disabled = true;
+  document.getElementById('next-btn').disabled = false;
+
+  setTimeout(() => moveNext(), 1200);
+}
+
+function moveNext() {
+  if (current < TOTAL - 1) {
+    current++;
+    render();
+  } else {
+    finish();
+  }
+}
+
+function flashScore(symbol, type) {
+  const el = document.createElement('div');
+  el.className = `score-flash ${type}`;
+  el.textContent = symbol;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 450);
+}
+
+// ── Finish ───────────────────────────────────────────────────────────────────
+async function finish() {
+  clearInterval(timerInterval);
+  const timeSec = Math.floor((Date.now() - startTime) / 1000);
+  const answerVals = answers.map(a => a.v);
+
+  const resp = await fetch('/submit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answers: answerVals, time_seconds: timeSec })
+  });
+  const data = await resp.json();
+  window.location.href = data.redirect;
+}
+
+// ── Keyboard ──────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    if (!answered) submitAnswer();
+    else moveNext();
+  }
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    if (answered) moveNext(); else skip();
+  }
+});
+
+render();
+</script>
+</body>
+</html>

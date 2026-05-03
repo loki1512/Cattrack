@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ topic_name }} – PYQ – CAT Math</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    .quiz-wrap { max-width: 700px; margin: 0 auto; }
+    .qcard-question {
+      font-size: 1.05rem;
+      line-height: 1.6;
+      white-space: pre-line;
+    }
+    .qcard-type {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .level-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+    .level-easy { background: var(--green); color: white; }
+    .level-medium { background: var(--amber); color: black; }
+    .level-hard { background: var(--red); color: white; }
+    .pyq-progress {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .mcq-options {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .mcq-option {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-size: 0.95rem;
+    }
+    .mcq-option:hover {
+      border-color: var(--amber);
+      background: var(--bg);
+    }
+    .mcq-option.selected {
+      border-color: var(--amber);
+      background: rgba(245, 158, 11, 0.1);
+    }
+    .mcq-option.correct {
+      border-color: var(--green);
+      background: rgba(34, 197, 94, 0.1);
+    }
+    .mcq-option.wrong {
+      border-color: var(--red);
+      background: rgba(239, 68, 68, 0.1);
+    }
+    .mcq-option .opt-letter {
+      font-weight: 700;
+      margin-right: 12px;
+      color: var(--muted);
+      min-width: 20px;
+    }
+    .mcq-option.selected .opt-letter { color: var(--amber); }
+    .mcq-option.correct .opt-letter { color: var(--green); }
+    .mcq-option.wrong .opt-letter { color: var(--red); }
+  </style>
+</head>
+<body>
+
+<div class="quiz-wrap">
+
+  <!-- Top bar -->
+  <div class="quiz-topbar">
+    <div>
+      <div class="quiz-title">{{ topic_name }} PYQ</div>
+      <div class="pyq-progress">
+        <span id="prog-text">Question 1 of {{ quiz|length }}</span>
+        <span>Session: 10 questions</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;">
+      {% if best %}
+      <div style="font-size:0.78rem;color:var(--muted);font-family:'JetBrains Mono',monospace;">
+        Best: <span style="color:var(--amber);">{{ best.get('best_score', 0) }}/10 in {{ fmt_time(best.get('best_time_seconds', 0)) }}</span>
+      </div>
+      {% endif %}
+      <div class="quiz-timer" id="timer">00:00</div>
+      <a href="{{ url_for('pyqs') }}" class="btn btn-ghost" style="padding:8px 14px;font-size:0.8rem;">✕ Quit</a>
+    </div>
+  </div>
+
+  <!-- Progress bar -->
+  <div class="prog-bar-wrap">
+    <div class="prog-bar-fill" id="prog-bar" style="width:0%"></div>
+  </div>
+
+  <!-- Question card -->
+  <div class="quiz-body">
+    <div class="qcard">
+      <div class="qcard-type" id="qtype">
+        PYQ <span class="level-badge level-medium" id="level-badge">Medium</span>
+        <span class="qtype-badge" id="qtype-badge" style="margin-left:8px;font-size:0.7rem;padding:2px 6px;border-radius:4px;background:var(--surface);color:var(--muted);"></span>
+      </div>
+      <div class="qcard-question" id="qtext">—</div>
+
+      <!-- MCQ Options Container -->
+      <div id="mcq-options" class="mcq-options" style="display:none;margin:16px 0;"></div>
+
+      <!-- Integer Input -->
+      <div class="answer-wrap" id="integer-input-wrap">
+        <input
+          type="text"
+          id="ans"
+          class="answer-input"
+          autocomplete="off"
+          placeholder="Enter answer (e.g., 3:4 or 150)"
+          autofocus
+        >
+
+        <div class="feedback-bar" id="feedback"></div>
+        <div class="fb-hint" id="fb-hint"></div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-ghost skip-btn" id="skip-btn" onclick="skip()">Skip</button>
+        <button class="btn btn-amber" id="next-btn" onclick="confirmAndNext()" disabled>Next →</button>
+      </div>
+
+      <div style="margin-top:16px;font-size:0.75rem;color:var(--muted);text-align:center;">
+        Press <kbd style="background:var(--surface);padding:1px 6px;border-radius:4px;border:1px solid var(--border2);">Enter</kbd> to submit
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const QUIZ = {{ quiz | tojson }};
+const TOTAL = QUIZ.length;
+let current = 0;
+let answers = [];
+let answered = false;
+let startTime = Date.now();
+let timerInterval;
+let scoreCount = 0;
+
+// ── Timer ───────────────────────────────────────────────────────────────────
+timerInterval = setInterval(() => {
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  const m = Math.floor(elapsed / 60).toString().padStart(2, '0');
+  const s = (elapsed % 60).toString().padStart(2, '0');
+  document.getElementById('timer').textContent = `${m}:${s}`;
+}, 1000);
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function render() {
+  const q = QUIZ[current];
+  document.getElementById('qtext').textContent = q.q;
+  document.getElementById('prog-text').textContent = `Question ${current + 1} of ${TOTAL}`;
+  document.getElementById('prog-bar').style.width = `${(current / TOTAL) * 100}%`;
+  
+  // Update level badge
+  const level = q.level || 'medium';
+  const badge = document.getElementById('level-badge');
+  badge.className = `level-badge level-${level}`;
+  badge.textContent = level.charAt(0).toUpperCase() + level.slice(1);
+  
+  // Update question type badge
+  const qtypeBadge = document.getElementById('qtype-badge');
+  const qtype = q.question_type || 'integer';
+  qtypeBadge.textContent = qtype === 'mcq' ? 'MCQ' : 'Integer';
+  
+  // Show/hide appropriate input
+  const mcqContainer = document.getElementById('mcq-options');
+  const integerWrap = document.getElementById('integer-input-wrap');
+  
+  if (qtype === 'mcq' && q.options) {
+    mcqContainer.style.display = 'flex';
+    integerWrap.style.display = 'none';
+    renderMCQOptions(q);
+  } else {
+    mcqContainer.style.display = 'none';
+    integerWrap.style.display = 'block';
+  }
+  
+  // Reset input
+  const inp = document.getElementById('ans');
+  inp.value = '';
+  inp.focus();
+  document.getElementById('feedback').textContent = '';
+  document.getElementById('fb-hint').textContent = '';
+  document.getElementById('next-btn').disabled = true;
+  document.getElementById('skip-btn').disabled = false;
+  answered = false;
+}
+
+// ── MCQ Options ────────────────────────────────────────────────────────────
+function renderMCQOptions(q) {
+  const container = document.getElementById('mcq-options');
+  const letters = ['A', 'B', 'C', 'D'];
+  container.innerHTML = q.options.map((opt, i) => `
+    <div class="mcq-option" data-value="${opt}" onclick="selectMCQ('${opt}')">
+      <span class="opt-letter">${letters[i]}</span>
+      <span class="opt-text">${opt}</span>
+    </div>
+  `).join('');
+}
+
+function selectMCQ(value) {
+  if (answered) return;
+  
+  // Mark as selected
+  document.querySelectorAll('.mcq-option').forEach(el => {
+    el.classList.remove('selected');
+    if (el.dataset.value === value) {
+      el.classList.add('selected');
+    }
+  });
+  
+  // Store the selected value and submit
+  answers[current] = value;
+  submitAnswerMCQ(value);
+}
+
+// ── Submit Answer ──────────────────────────────────────────────────────────
+function submitAnswer() {
+  if (answered) return;
+  answered = true;
+  
+  const inp = document.getElementById('ans');
+  const userAns = inp.value.trim();
+  answers[current] = userAns;
+  
+  const q = QUIZ[current];
+  const correct = q.a.trim().toLowerCase();
+  const user = userAns.toLowerCase().replace(/\s/g, '');
+  
+  let isCorrect = user === correct;
+  
+  // Try numeric comparison
+  if (!isCorrect) {
+    try {
+      const uNum = parseFloat(user);
+      const cNum = parseFloat(correct);
+      if (!isNaN(uNum) && !isNaN(cNum) && Math.abs(uNum - cNum) < 0.1) {
+        isCorrect = true;
+      }
+    } catch(e) {}
+  }
+  
+  if (isCorrect) {
+    scoreCount++;
+    document.getElementById('feedback').textContent = '✓ Correct!';
+    document.getElementById('feedback').style.color = 'var(--green)';
+  } else {
+    document.getElementById('feedback').textContent = `✕ Answer: ${q.a}`;
+    document.getElementById('feedback').style.color = 'var(--red)';
+  }
+  
+  document.getElementById('fb-hint').textContent = q.hint || '';
+  document.getElementById('next-btn').disabled = false;
+  document.getElementById('skip-btn').disabled = true;
+  document.getElementById('next-btn').focus();
+}
+
+// ── Submit Answer (MCQ) ───────────────────────────────────────────────────
+function submitAnswerMCQ(userAns) {
+  if (answered) return;
+  answered = true;
+  
+  const q = QUIZ[current];
+  const correct = q.a.trim();
+  
+  // Highlight correct/wrong options
+  document.querySelectorAll('.mcq-option').forEach(el => {
+    if (el.dataset.value === correct) {
+      el.classList.add('correct');
+    } else if (el.classList.contains('selected') && el.dataset.value !== correct) {
+      el.classList.add('wrong');
+    }
+  });
+  
+  const isCorrect = userAns.trim() === correct;
+  
+  if (isCorrect) {
+    scoreCount++;
+    document.getElementById('feedback').textContent = '✓ Correct!';
+    document.getElementById('feedback').style.color = 'var(--green)';
+  } else {
+    document.getElementById('feedback').textContent = `✕ Answer: ${q.a}`;
+    document.getElementById('feedback').style.color = 'var(--red)';
+  }
+  
+  document.getElementById('fb-hint').textContent = q.hint || '';
+  document.getElementById('next-btn').disabled = false;
+  document.getElementById('skip-btn').disabled = true;
+  document.getElementById('next-btn').focus();
+}
+
+// ── Skip ───────────────────────────────────────────────────────────────────
+function skip() {
+  if (answered) return;
+  answers[current] = '';
+  nextQuestion();
+}
+
+// ── Next Question ──────────────────────────────────────────────────────────
+function confirmAndNext() {
+  nextQuestion();
+}
+
+function nextQuestion() {
+  if (current < TOTAL - 1) {
+    current++;
+    render();
+  } else {
+    finishQuiz();
+  }
+}
+
+// ── Finish ─────────────────────────────────────────────────────────────────
+function finishQuiz() {
+  clearInterval(timerInterval);
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  
+  fetch('/pyq_log_time', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({seconds: elapsed})
+  });
+  
+  fetch('/pyq_submit', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      time_seconds: elapsed,
+      answers: answers
+    })
+  }).then(r => r.json()).then(data => {
+    window.location.href = data.redirect;
+  });
+}
+
+// ── Input Handling ─────────────────────────────────────────────────────────
+const inp = document.getElementById('ans');
+inp.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const qtype = QUIZ[current].question_type || 'integer';
+    if (qtype === 'mcq') {
+      // MCQ auto-submits on selection, Enter just moves to next
+      if (!answered) return;
+      confirmAndNext();
+    } else {
+      if (!answered) {
+        submitAnswer();
+      } else {
+        confirmAndNext();
+      }
+    }
+  }
+});
+
+// Start
+render();
+</script>
+
+</body>
+</html>

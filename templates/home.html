@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CAT Math Trainer</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<nav class="nav">
+  <a class="nav-logo" href="/">
+    CAT Math
+    <span class="logo-badge">Trainer</span>
+  </a>
+  <div class="nav-chips">
+    <a href="{{ url_for('pyqs') }}" class="nav-chip">
+      📋 PYQs
+    </a>
+    <div class="nav-chip">
+      🔥 <span class="val">{{ stats.streak }}</span> day streak
+    </div>
+    <div class="nav-chip">
+      ⏱ <span class="val">{{ fmt_hms(stats.total_session_seconds) }}</span> logged
+    </div>
+    <div class="nav-chip">
+      ✓ <span class="val">{{ stats.total_correct }}/{{ stats.total_questions_answered }}</span>
+    </div>
+  </div>
+</nav>
+
+<div class="page">
+
+  <div class="hero">
+    <div class="hero-tag">CAT 2025 Prep · Math Speed</div>
+    <h1>Train your<br>mental math.</h1>
+    <p>Bite-sized 20-question drills. Instant feedback. Track your best times and streaks.</p>
+  </div>
+
+  <div class="stat-row">
+    <div class="stat-box">
+      <div class="sb-val">{{ stats.streak }}</div>
+      <div class="sb-label">Day Streak 🔥</div>
+    </div>
+    <div class="stat-box">
+      <div class="sb-val">{{ fmt_hms(stats.total_session_seconds) }}</div>
+      <div class="sb-label">Time Logged</div>
+    </div>
+    <div class="stat-box">
+      <div class="sb-val">{{ stats.total_questions_answered }}</div>
+      <div class="sb-label">Questions Done</div>
+    </div>
+    <div class="stat-box">
+      <div class="sb-val">
+        {% if stats.total_questions_answered > 0 %}
+          {{ (stats.total_correct / stats.total_questions_answered * 100) | int }}%
+        {% else %}—{% endif %}
+      </div>
+      <div class="sb-label">Overall Accuracy</div>
+    </div>
+  </div>
+
+  {% for cat_id in categories %}
+  {% set cat = categories[cat_id] %}
+  <div class="cat-section">
+    <div class="cat-header">
+      <div class="cat-icon">{{ cat.icon }}</div>
+      <div class="cat-label">{{ cat.label }}</div>
+    </div>
+    <div class="lesson-grid">
+      {% for lesson in cat.lessons %}
+      <a href="{% if lesson.unlocked %}{{ url_for('lesson', lesson_id=lesson.id) }}{% else %}#{% endif %}"
+         class="lesson-card {% if lesson.done %}done{% elif not lesson.unlocked %}locked{% endif %}">
+        <div class="lc-name">{{ lesson.name }}</div>
+        <div class="lc-desc">{{ lesson.description }}</div>
+        <div class="lc-meta">
+          {% if lesson.done %}
+          <span class="lc-badge badge-done">✓ Done</span>
+          {% elif lesson.unlocked %}
+          <span class="lc-badge badge-new">● Open</span>
+          {% else %}
+          <span class="lc-badge badge-lock">🔒 Locked</span>
+          {% endif %}
+
+          {% if lesson.best %}
+          <span class="lc-best">⚡ {{ fmt_time(lesson.best.best_time_seconds) }}</span>
+          <span style="color:var(--muted);">{{ lesson.best.best_score }}/20</span>
+          {% endif %}
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+  {% if history %}
+  <div class="section-head">Recent Sessions</div>
+  <table class="hist-table">
+    <thead>
+      <tr>
+        <th>Lesson</th>
+        <th>Date</th>
+        <th>Score</th>
+        <th>Time</th>
+        <th>Accuracy</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for h in history %}
+      <tr>
+        <td>{{ h.lesson_name }}</td>
+        <td style="color:var(--muted); font-size:0.8rem;">{{ h.date }}</td>
+        <td>{{ h.score }}/{{ h.total }}</td>
+        <td>{{ fmt_time(h.time_seconds) }}</td>
+        <td>
+          {% if h.accuracy >= 90 %}
+          <span class="acc-pill acc-great">{{ h.accuracy }}%</span>
+          {% elif h.accuracy >= 65 %}
+          <span class="acc-pill acc-ok">{{ h.accuracy }}%</span>
+          {% else %}
+          <span class="acc-pill acc-poor">{{ h.accuracy }}%</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+</div>
+
+<script>
+  // Log time when user leaves
+  let pageOpenTime = Date.now();
+  window.addEventListener('beforeunload', () => {
+    const secs = Math.floor((Date.now() - pageOpenTime) / 1000);
+    if (secs > 5) {
+      navigator.sendBeacon('/log_time', JSON.stringify({ seconds: secs }));
+    }
+  });
+</script>
+</body>
+</html>
